@@ -1,0 +1,46 @@
+services:
+   mysql:
+      image: mysql:8.4
+      container_name: safebase_mysql
+      environment:
+         MYSQL_DATABASE: safebase
+         MYSQL_USER: myuser
+         MYSQL_PASSWORD: mypassword
+         MYSQL_ROOT_PASSWORD: root
+      ports:
+         - "3307:3306"
+      volumes:
+         - ./mysql-data:/var/lib/mysql
+         - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+   back:
+      build:
+         context: ./back
+      container_name: safebase_back
+      environment:
+         DATABASE_HOST: mysql
+         DATABASE_PORT: 3306
+         DATABASE_NAME: safebase
+         DATABASE_USER: myuser
+         DATABASE_PASSWORD: mypassword
+      ports:
+         - "3000:3000"
+      volumes:
+         - ./back:/app
+         - /app/node_modules
+      command: npm run dev
+      depends_on:
+         - mysql
+
+   front:
+      build:
+         context: ./front
+      container_name: safebase_front
+      ports:
+         - "5173:5173"
+      volumes:
+         - ./front:/app
+         - /app/node_modules
+      command: npm run dev -- --host 0.0.0.0
+      depends_on:
+         - back
