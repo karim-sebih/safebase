@@ -1,17 +1,27 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../db/connection.js";
 
-const Base = sequelize.define("Base", {
-    name: {
-        type: DataTypes.STRING,
-        allowNull: false,
+const Base = sequelize.define(
+    "Base",
+    {
+        id: {
+            type: DataTypes.INTEGER,
+            autoIncrement: true,
+            primaryKey: true,
+        },
+        name: {
+            type: DataTypes.STRING(255),
+            allowNull: false,
+        },
+        description: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
     },
-    description: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-    },
-}, {
-    timestamps: true,
-});
+    {
+        tableName: "Bases",
+        timestamps: true,
+    }
+);
 
 export default Base;

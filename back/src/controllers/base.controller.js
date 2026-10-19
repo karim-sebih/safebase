@@ -2,13 +2,19 @@ import Base from "../models/baseModel.js";
 
 async function createBase(req, res) {
     try {
-        const { name, description } = req.body;
-        const newBase = await Base.create({ name, description });
-        res.status(201).json(newBase);
+        console.log("BODY :", req.body);
+
+        const base = await Base.create(req.body);
+
+        res.status(201).json(base);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("Erreur création base :", error);
+
+        res.status(500).json({
+            message: error.message
+        });
     }
-}
+};
 
 async function getAllBases(req, res) {
     try {
@@ -69,7 +75,6 @@ async function downloadBase(req, res) {
     try {
         const base = await Base.findByPk(req.params.id);
         if (base) {
-            // Set headers for file download
             res.setHeader('Content-Disposition', `attachment; filename=${base.name}.json`);
             res.setHeader('Content-Type', 'application/json');
             res.status(200).send(JSON.stringify(base, null, 2));

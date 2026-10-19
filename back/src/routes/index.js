@@ -3,6 +3,6 @@ import baseRouter from "./base.route.js";
 
 const router = express.Router();
 
-router.use("/base", baseRouter);
+router.use("/bases", baseRouter);
 
 export default router;

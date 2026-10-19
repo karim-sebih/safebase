@@ -18,11 +18,12 @@ services:
          context: ./back
       container_name: safebase_back
       environment:
-         DATABASE_HOST: mysql
-         DATABASE_PORT: 3306
-         DATABASE_NAME: safebase
-         DATABASE_USER: myuser
-         DATABASE_PASSWORD: mypassword
+         DB_NAME: safebase
+         DB_USER: myuser
+         DB_PASSWORD: mypassword
+         DB_HOST: mysql
+         DB_PORT: 3306
+         PORT: 3000
       ports:
          - "3000:3000"
       volumes:
