@@ -1,27 +1,48 @@
-import { execFile } from '../utils/execFile.js';
-import path from 'path';
-import fs from 'fs';
+// src/services/backup.service.js
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const backupDir = path.resolve(currentDir, "../../backups");
 
 export function backupDatabase() {
     return new Promise((resolve, reject) => {
-        const filename = `${database.name}-${Date.now()}.sql`;
-        const filepath = path.join(__dirname, '../../backups', filename);
+        fs.mkdirSync(backupDir, { recursive: true });
 
-        fs.mkdirSync("backups", { recursive: true });
+        const filename = `${process.env.DB_NAME}-${Date.now()}.sql`;
+        const filepath = path.join(backupDir, filename);
+        const output = fs.createWriteStream(filepath);
 
-        execFile('mysqldump', [
-            '-h', database.host,
-            `-P${database.port}`,
-            `-u${database.user}`,
-            database.name,
-            `-p${database.password}`,
-        ], (error, stdout, stderr) => {
-            if (error) {
-                reject(error);
-                return;
+        const dump = spawn(
+            "mysqldump",
+            [
+                "-h", process.env.DB_HOST,
+                "-P", process.env.DB_PORT || "3306",
+                "-u", process.env.DB_USER,
+                process.env.DB_NAME,
+            ],
+            {
+                // Évite de mettre le mot de passe directement dans les arguments.
+                env: { ...process.env, MYSQL_PWD: process.env.DB_PASSWORD },
             }
-            fs.writeFileSync(filepath, stdout);
-            resolve(filepath);
+        );
+
+        dump.stdout.pipe(output);
+
+        dump.on("error", (error) => {
+            output.destroy();
+            reject(error);
+        });
+
+        dump.on("close", (code) => {
+            if (code === 0) {
+                resolve({ filename, filepath });
+            } else {
+                output.destroy();
+                reject(new Error(`mysqldump a échoué (code ${code})`));
+            }
         });
     });
 }

@@ -1,11 +1,12 @@
-import cron from 'node-cron';
-import { backupDatabase } from './backup.service.js';
+// src/cron/backup.cron.js
+import cron from "node-cron";
+import { backupDatabase } from "../services/backup.service.js";
 
-cron.schedule('0 8 * * 1', async () => {
+cron.schedule("0 8 * * 1", async () => {
     try {
-        const backupPath = await backupDatabase();
-        console.log(`Backup created successfully at: ${backupPath}`);
+        const result = await backupDatabase();
+        console.log("Sauvegarde créée :", result.filepath);
     } catch (error) {
-        console.error('Error creating backup:', error);
+        console.error("Échec de la sauvegarde :", error);
     }
 });
