@@ -2,6 +2,7 @@ services:
    mysql:
       image: mysql:8.4
       container_name: safebase_mysql
+      command: --mysql-native-password=ON
       environment:
          MYSQL_DATABASE: safebase
          MYSQL_USER: myuser
@@ -12,6 +13,13 @@ services:
       volumes:
          - ./mysql-data:/var/lib/mysql
          - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      healthcheck:
+         test:
+            ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+         interval: 5s
+         timeout: 5s
+         retries: 20
+         start_period: 10s
 
    back:
       build:
@@ -31,7 +39,8 @@ services:
          - /app/node_modules
       command: npm run dev
       depends_on:
-         - mysql
+         mysql:
+            condition: service_healthy
 
    front:
       build:

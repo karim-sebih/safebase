@@ -1,5 +1,6 @@
 import Backup from "../models/backupModel.js";
 import Alert from "../models/alertsModel.js";
+import { backupDatabase } from "../services/backup.service.js";
 
 export async function listBackups(req, res) {
     try {
@@ -15,28 +16,39 @@ export async function listBackups(req, res) {
 }
 
 export async function createBackup(req, res) {
-    try {
-        const { filename, filepath } = req.body;
+    const baseId = req.params.baseId;
 
-        if (!filename || !filepath) {
-            return res.status(400).json({
-                message: "filename et filepath sont obligatoires.",
-            });
-        }
+    try {
+        // Lance réellement mysqldump côté backend
+        const { filename, filepath } = await backupDatabase();
 
         const backup = await Backup.create({
-            baseId: req.params.baseId,
+            baseId,
             filename,
             filepath,
-            status: "pending",
+            status: "success",
         });
 
-        res.status(201).json(backup);
+        return res.status(201).json(backup);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Erreur pendant la sauvegarde :", error);
+
+        try {
+            await Alert.create({
+                baseId,
+                type: "backup_failed",
+                message: `Échec de la sauvegarde : ${error.message}`,
+            });
+        } catch (alertError) {
+            console.error("Impossible de créer l’alerte :", alertError);
+        }
+
+        return res.status(500).json({
+            message: "La sauvegarde a échoué.",
+            error: error.message,
+        });
     }
 }
-
 export async function updateStatus(req, res) {
     try {
         const { status, size } = req.body;

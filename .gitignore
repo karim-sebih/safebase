@@ -2,3 +2,13 @@ node_modules/
 mysql-data/
 dist/
 .env
+
+# Fichiers de sauvegarde de la base
+backups/
+*.sql
+*.sql.gz
+
+# Variables d'environnement
+.env
+.env.*
+!.env.example
