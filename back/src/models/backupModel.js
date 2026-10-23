@@ -11,7 +11,7 @@ const Backup = sequelize.define(
         },
         baseId: {
             type: DataTypes.INTEGER,
-            allowNull: false,
+            allowNull: true,
         },
         filename: {
             type: DataTypes.STRING(255),

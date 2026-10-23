@@ -5,8 +5,8 @@ async function getBackups(baseId) {
     return response.data;
 }
 
-async function createBackup(baseId, data = {}) {
-    const response = await instance.post(`/bases/${baseId}/backups`, data);
+async function createGlobalBackup() {
+    const response = await instance.post("/backups/global");
     return response.data;
 }
 
@@ -20,6 +20,6 @@ async function updateBackupStatus(backupId, data) {
 
 export {
     getBackups,
-    createBackup,
+    createGlobalBackup,
     updateBackupStatus,
 };

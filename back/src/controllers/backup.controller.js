@@ -15,15 +15,13 @@ export async function listBackups(req, res) {
     }
 }
 
-export async function createBackup(req, res) {
-    const baseId = req.params.baseId;
-
+export async function createGlobalBackup(req, res) {
     try {
-        // Lance réellement mysqldump côté backend
+        // Un seul dump pour toute l'application
         const { filename, filepath } = await backupDatabase();
 
         const backup = await Backup.create({
-            baseId,
+            baseId: null,
             filename,
             filepath,
             status: "success",
@@ -31,24 +29,15 @@ export async function createBackup(req, res) {
 
         return res.status(201).json(backup);
     } catch (error) {
-        console.error("Erreur pendant la sauvegarde :", error);
-
-        try {
-            await Alert.create({
-                baseId,
-                type: "backup_failed",
-                message: `Échec de la sauvegarde : ${error.message}`,
-            });
-        } catch (alertError) {
-            console.error("Impossible de créer l’alerte :", alertError);
-        }
+        console.error("Erreur pendant la sauvegarde globale :", error);
 
         return res.status(500).json({
-            message: "La sauvegarde a échoué.",
+            message: "La sauvegarde globale a échoué.",
             error: error.message,
         });
     }
 }
+
 export async function updateStatus(req, res) {
     try {
         const { status, size } = req.body;
