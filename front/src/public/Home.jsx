@@ -4,7 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { getAllBases, deleteBase } from "../api/base.js";
 import {
     getBackups,
+    getGlobalBackups,
     createGlobalBackup,
+    downloadBackup
 } from "../api/backup.js";
 import {
     getAlerts,
@@ -18,79 +20,123 @@ function isAlertRead(alert) {
     return alert.isRead ?? alert.read ?? false;
 }
 
+function sortBackups(backups) {
+    return [...backups].sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+
+        return dateB - dateA || Number(b.id) - Number(a.id);
+    });
+}
+
 export default function Home() {
     const navigate = useNavigate();
 
     const [bases, setBases] = useState([]);
     const [backups, setBackups] = useState([]);
     const [alerts, setAlerts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [creatingBackup, setCreatingBackup] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [toast, setToast] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [creatingBackup, setCreatingBackup] = useState(false);
 
-    // Évite de réafficher la même alerte à chaque vérification.
     const seenAlerts = useRef(new Set());
     const dismissedAlerts = useRef(new Set());
-    const firstAlertLoad = useRef(true);
 
     const showToast = useCallback((message, type = "info") => {
         setToast({ id: Date.now(), message, type });
     }, []);
 
-    const loadAlerts = useCallback(
-        async (basesToLoad, showExisting = false) => {
-            const results = await Promise.all(
+    const loadAlerts = useCallback(async (basesToLoad) => {
+        const results = await Promise.all(
+            basesToLoad.map(async (base) => {
+                try {
+                    const data = await getAlerts(base.id);
+
+                    return (Array.isArray(data) ? data : []).map((alert) => ({
+                        ...alert,
+                        baseId: base.id,
+                        baseName: base.name,
+                    }));
+                } catch (error) {
+                    console.error(
+                        `Erreur de chargement des alertes de ${base.name} :`,
+                        error
+                    );
+                    return [];
+                }
+            })
+        );
+
+        const allAlerts = results.flat();
+        setAlerts(allAlerts);
+
+        const unreadAlerts = allAlerts.filter(
+            (alert) => !isAlertRead(alert)
+        );
+
+        setNotifications((current) => {
+            const next = [...current];
+
+            for (const alert of unreadAlerts) {
+                const key = `${alert.baseId}-${alert.id}`;
+
+                if (
+                    !seenAlerts.current.has(key) &&
+                    !dismissedAlerts.current.has(key)
+                ) {
+                    seenAlerts.current.add(key);
+                    next.push({ ...alert, notificationKey: key });
+                }
+            }
+
+            return next;
+        });
+    }, []);
+
+    const refreshBackups = useCallback(async (basesToLoad) => {
+        const [baseBackupResults, globalData] = await Promise.all([
+            Promise.all(
                 basesToLoad.map(async (base) => {
                     try {
-                        const data = await getAlerts(base.id);
+                        const data = await getBackups(base.id);
 
                         return (Array.isArray(data) ? data : []).map(
-                            (alert) => ({
-                                ...alert,
+                            (backup) => ({
+                                ...backup,
                                 baseId: base.id,
                                 baseName: base.name,
                             })
                         );
                     } catch (error) {
                         console.error(
-                            `Erreur de chargement des alertes de ${base.name} :`,
+                            `Erreur de chargement des sauvegardes de ${base.name} :`,
                             error
                         );
                         return [];
                     }
                 })
-            );
+            ),
+            getGlobalBackups(),
+        ]);
 
-            const allAlerts = results.flat();
-            setAlerts(allAlerts);
+        const globalBackups = (Array.isArray(globalData) ? globalData : []).map(
+            (backup) => ({
+                ...backup,
+                baseId: null,
+                baseName: "Sauvegarde globale",
+            })
+        );
 
-            const unread = allAlerts.filter((alert) => !isAlertRead(alert));
-
-            setNotifications((current) => {
-                const next = showExisting ? [] : [...current];
-
-                for (const alert of unread) {
-                    const key = `${alert.baseId}-${alert.id}`;
-
-                    if (
-                        !seenAlerts.current.has(key) &&
-                        !dismissedAlerts.current.has(key)
-                    ) {
-                        seenAlerts.current.add(key);
-                        next.push({ ...alert, notificationKey: key });
-                    }
-                }
-
-                return next;
-            });
-        },
-        []
-    );
+        setBackups(
+            sortBackups([...baseBackupResults.flat(), ...globalBackups])
+        );
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
         let alertInterval;
+        let backupInterval;
 
         async function loadDashboard() {
             try {
@@ -100,95 +146,30 @@ export default function Home() {
                 const safeBases = Array.isArray(data) ? data : [];
                 setBases(safeBases);
 
-                setSelectedBaseId((current) => {
-                    if (
-                        current &&
-                        safeBases.some(
-                            (base) => String(base.id) === String(current)
-                        )
-                    ) {
-                        return current;
-                    }
-
-                    return safeBases[0] ? String(safeBases[0].id) : "";
-                });
-
-                const results = await Promise.all(
-                    safeBases.map(async (base) => {
-                        try {
-                            const [baseBackups, baseAlerts] = await Promise.all([
-                                getBackups(base.id),
-                                getAlerts(base.id),
-                            ]);
-
-                            return {
-                                base,
-                                backups: Array.isArray(baseBackups)
-                                    ? baseBackups
-                                    : [],
-                                alerts: Array.isArray(baseAlerts)
-                                    ? baseAlerts
-                                    : [],
-                            };
-                        } catch (error) {
-                            console.error(
-                                `Erreur de chargement pour ${base.name} :`,
-                                error
-                            );
-                            return { base, backups: [], alerts: [] };
-                        }
-                    })
-                );
+                await Promise.all([
+                    refreshBackups(safeBases),
+                    loadAlerts(safeBases),
+                ]);
 
                 if (cancelled) return;
 
-                const allBackups = results
-                    .flatMap(({ base, backups: baseBackups }) =>
-                        baseBackups.map((backup) => ({
-                            ...backup,
-                            baseId: base.id,
-                            baseName: base.name,
-                        }))
-                    )
-                    .sort(
-                        (a, b) =>
-                            new Date(b.createdAt || 0) -
-                            new Date(a.createdAt || 0)
-                    );
+                alertInterval = window.setInterval(() => {
+                    if (!cancelled) loadAlerts(safeBases);
+                }, 10000);
 
-                setBackups(allBackups);
-
-                const allAlerts = results.flatMap(
-                    ({ base, alerts: baseAlerts }) =>
-                        baseAlerts.map((alert) => ({
-                            ...alert,
-                            baseId: base.id,
-                            baseName: base.name,
-                        }))
-                );
-
-                setAlerts(allAlerts);
-
-                // Affiche une fois les alertes non lues déjà présentes.
-                setNotifications(
-                    allAlerts
-                        .filter((alert) => !isAlertRead(alert))
-                        .map((alert) => {
-                            const key = `${alert.baseId}-${alert.id}`;
-                            seenAlerts.current.add(key);
-                            return { ...alert, notificationKey: key };
-                        })
-                );
-
-                firstAlertLoad.current = false;
-
-                // Détecte ensuite les nouvelles alertes créées côté serveur.
-                alertInterval = window.setInterval(async () => {
-                    if (cancelled || firstAlertLoad.current) return;
-                    await loadAlerts(safeBases);
+                backupInterval = window.setInterval(() => {
+                    if (!cancelled) {
+                        refreshBackups(safeBases).catch((error) =>
+                            console.error(
+                                "Erreur de mise à jour des sauvegardes :",
+                                error
+                            )
+                        );
+                    }
                 }, 10000);
             } catch (error) {
-                console.error("Erreur lors du chargement :", error);
+                console.error("Erreur lors du chargement du tableau de bord :", error);
+                showToast("Impossible de charger le tableau de bord.", "error");
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -199,8 +180,9 @@ export default function Home() {
         return () => {
             cancelled = true;
             if (alertInterval) window.clearInterval(alertInterval);
+            if (backupInterval) window.clearInterval(backupInterval);
         };
-    }, [loadAlerts, showToast]);
+    }, [loadAlerts, refreshBackups, showToast]);
 
     useEffect(() => {
         if (!toast) return;
@@ -218,18 +200,14 @@ export default function Home() {
             const newBackup = await createGlobalBackup();
 
             setBackups((current) =>
-                [
+                sortBackups([
                     {
                         ...newBackup,
                         baseId: null,
                         baseName: "Sauvegarde globale",
                     },
                     ...current,
-                ].sort(
-                    (a, b) =>
-                        new Date(b.createdAt || 0) -
-                        new Date(a.createdAt || 0)
-                )
+                ])
             );
 
             showToast("Sauvegarde globale créée.", "success");
@@ -246,6 +224,28 @@ export default function Home() {
             );
         } finally {
             setCreatingBackup(false);
+        }
+    }
+
+    async function handleDownloadBackup(backup) {
+        try {
+            await downloadBackup(
+                backup.id,
+                backup.filename || `sauvegarde-${backup.id}.sql`
+            );
+
+            showToast("Téléchargement lancé.", "success");
+        } catch (error) {
+            console.error(
+                "Erreur de téléchargement :",
+                error.response?.data || error.message
+            );
+
+            showToast(
+                error.response?.data?.message ||
+                "Impossible de télécharger cette sauvegarde.",
+                "error"
+            );
         }
     }
     async function handleDeleteBase(id) {
@@ -265,7 +265,9 @@ export default function Home() {
                 )
             );
             setAlerts((current) =>
-                current.filter((alert) => String(alert.baseId) !== String(id))
+                current.filter(
+                    (alert) => String(alert.baseId) !== String(id)
+                )
             );
             setNotifications((current) =>
                 current.filter(
@@ -295,7 +297,8 @@ export default function Home() {
 
             setNotifications((current) =>
                 current.filter(
-                    (item) => item.notificationKey !== alert.notificationKey
+                    (item) =>
+                        item.notificationKey !== alert.notificationKey
                 )
             );
         } catch (error) {
@@ -324,7 +327,8 @@ export default function Home() {
 
             setNotifications((current) =>
                 current.filter(
-                    (item) => item.notificationKey !== alert.notificationKey
+                    (item) =>
+                        item.notificationKey !== alert.notificationKey
                 )
             );
         } catch (error) {
@@ -341,7 +345,8 @@ export default function Home() {
         dismissedAlerts.current.add(alert.notificationKey);
         setNotifications((current) =>
             current.filter(
-                (item) => item.notificationKey !== alert.notificationKey
+                (item) =>
+                    item.notificationKey !== alert.notificationKey
             )
         );
     }
@@ -381,6 +386,7 @@ export default function Home() {
                         <span>Bases</span>
                     </div>
                 </div>
+
                 <div className="summary-card">
                     <span className="summary-icon">⇩</span>
                     <div>
@@ -388,6 +394,7 @@ export default function Home() {
                         <span>Sauvegardes</span>
                     </div>
                 </div>
+
                 <div className="summary-card">
                     <span className="summary-icon summary-icon-warning">!</span>
                     <div>
@@ -421,12 +428,14 @@ export default function Home() {
                                             .charAt(0)
                                             .toUpperCase()}
                                     </div>
+
                                     <div className="database-title">
                                         <h3>{base.name}</h3>
                                         <span className="status-label">
                                             <i /> Disponible
                                         </span>
                                     </div>
+
                                     <button
                                         className="button-icon"
                                         aria-label={`Modifier ${base.name}`}
@@ -458,7 +467,7 @@ export default function Home() {
                 <div className="section-title">
                     <div>
                         <h2>Toutes les sauvegardes</h2>
-                        <p>Historique regroupé de toutes vos bases.</p>
+                        <p>Historique des sauvegardes des bases et globales.</p>
                     </div>
                     <span className="count-badge">{backups.length}</span>
                 </div>
@@ -472,49 +481,54 @@ export default function Home() {
                         {backups.map((backup) => (
                             <article
                                 className="global-backup-row"
-                                key={`${backup.baseId}-${backup.id}`}
+                                key={`${backup.baseId ?? "global"}-${backup.id}`}
                             >
                                 <span className="file-icon">⇩</span>
+
                                 <div className="item-main">
                                     <strong>
                                         {backup.filename || "Sauvegarde"}
                                     </strong>
                                     <small>
-                                        Base : {backup.baseName || "Inconnue"}
+                                        {backup.baseName || "Sauvegarde globale"}
                                         {backup.createdAt &&
                                             ` · ${new Date(
                                                 backup.createdAt
                                             ).toLocaleString()}`}
                                     </small>
                                 </div>
+
                                 <span className="status-pill">
-                                    {backup.status || "inconnue"}
+                                    <button
+                                        className="button button-quiet"
+                                        onClick={() => handleDownloadBackup(backup)}
+                                    >
+                                        Télécharger
+                                    </button>
                                 </span>
                             </article>
                         ))}
                     </div>
                 )}
 
-                {bases.length > 0 && (
-                    <div className="backup-controls">
-                        <p>
-                            Cette action lance une sauvegarde pour toutes vos bases.
-                        </p>
+                <div className="backup-controls">
+                    <p>
+                        Cette action lance une sauvegarde globale de
+                        l’application.
+                    </p>
 
-                        <button
-                            className="button button-primary"
-                            onClick={handleCreateBackup}
-                            disabled={creatingBackup || bases.length === 0}
-                        >
-                            {creatingBackup
-                                ? "Sauvegardes en cours…"
-                                : "↥ Sauvegarder toutes les bases"}
-                        </button>
-                    </div>
-                )}
+                    <button
+                        className="button button-primary"
+                        onClick={handleCreateBackup}
+                        disabled={creatingBackup}
+                    >
+                        {creatingBackup
+                            ? "Sauvegarde en cours…"
+                            : "↥ Lancer une sauvegarde globale"}
+                    </button>
+                </div>
             </section>
 
-            {/* Les alertes sont affichées en notifications fixes en bas à droite. */}
             <aside className="notification-stack" aria-label="Notifications">
                 {notifications.map((alert) => (
                     <article
@@ -525,14 +539,27 @@ export default function Home() {
                         <span className="notification-icon">!</span>
 
                         <div className="notification-content">
-                            <strong>{alert.baseName || "Alerte SafeBase"}</strong>
-                            <p>{alert.message || alert.type || "Nouvelle alerte"}</p>
+                            <strong>
+                                {alert.baseName || "Alerte SafeBase"}
+                            </strong>
+                            <p>
+                                {alert.message ||
+                                    alert.type ||
+                                    "Nouvelle alerte"}
+                            </p>
 
                             <button
                                 className="notification-action"
                                 onClick={() => handleMarkAlertAsRead(alert)}
                             >
                                 Marquer comme lue
+                            </button>
+
+                            <button
+                                className="notification-action"
+                                onClick={() => handleDeleteAlert(alert)}
+                            >
+                                Supprimer
                             </button>
                         </div>
 

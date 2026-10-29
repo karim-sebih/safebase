@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import router from "./src/routes/index.js";
-import "./src/services/backup.service.js";
+import "./src/services/backup.cron.js";
 const app = express();
 
 app.use(cors({
