@@ -3,11 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
-import filenameUtils from "../utils/backupFilename.cjs";
+import createBackupFilename from "../utils/backupFilename.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const backupDir = path.resolve(currentDir, "../../backups");
-const { createBackupFilename } = filenameUtils;
 
 export async function backupDatabase() {
     fs.mkdirSync(backupDir, { recursive: true });
