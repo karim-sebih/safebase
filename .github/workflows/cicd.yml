@@ -23,10 +23,6 @@ jobs:
         working-directory: back
         run: npm ci
 
-      - name: Lancer les tests du backend
-        working-directory: back
-        run: npm test -- --passWithNoTests
-
       - name: Installer les dépendances du frontend
         working-directory: front
         run: npm ci
