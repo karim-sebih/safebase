@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Installer les dépendances du backend
+        working-directory: back
+        run: npm ci
+
+      - name: Vérifier le backend
+        working-directory: back
+        run: npm run
+
+      - name: Installer les dépendances du frontend
+        working-directory: front
+        run: npm ci
+
+      - name: Construire le frontend
+        working-directory: front
+        run: npm run build
